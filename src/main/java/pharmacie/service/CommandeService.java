@@ -1,13 +1,12 @@
 package pharmacie.service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.annotation.Validated;
 
 import jakarta.validation.constraints.Positive;
 import lombok.extern.slf4j.Slf4j;
@@ -100,8 +99,36 @@ public class CommandeService {
      */
     @Transactional
     public Ligne ajouterLigne(int commandeNum, int medicamentRef, @Positive int quantite) {
-        // TODO : implémenter la méthode
-        throw new UnsupportedOperationException("Not implemented yet");
+        var commande = commandeDao.findById(commandeNum).orElseThrow();
+        if (commande.getEnvoyeele() != null) {
+            throw new IllegalStateException("La commande a déjà été envoyée.");
+        }
+
+        var medicament = medicamentDao.findById(medicamentRef).orElseThrow();
+        if (Boolean.TRUE.equals(medicament.isIndisponible())) {
+            throw new IllegalStateException("Le médicament est indisponible.");
+        }
+
+        int totalCommandees = medicament.getUnitesCommandees() + quantite;
+        if (medicament.getUnitesEnStock() < totalCommandees) {
+            throw new IllegalStateException("Stock insuffisant pour ce médicament.");
+        }
+        Ligne ligne = commande.getLignes().stream()
+            .filter(l -> l.getMedicament().getReference() == medicamentRef)
+            .findFirst()
+            .orElse(null);
+        if (ligne != null) {
+            ligne.setQuantite(ligne.getQuantite() + quantite);
+            ligneDao.save(ligne);
+        } else {
+            ligne = new Ligne(commande, medicament, quantite);
+            ligneDao.save(ligne);
+            commande.getLignes().add(ligne);
+        }
+
+        medicament.setUnitesCommandees(medicament.getUnitesCommandees() + quantite);
+        medicamentDao.save(medicament);
+        return ligne;
     }
 
     /**
@@ -118,8 +145,18 @@ public class CommandeService {
      */
     @Transactional
     public void supprimerLigne(int id) {
-        // TODO : implémenter la méthode
-        throw new UnsupportedOperationException("Not implemented yet");
+        var ligne = ligneDao.findById(id).orElseThrow();
+        var commande = ligne.getCommande();
+        if (commande.getEnvoyeele() != null) {
+            throw new IllegalStateException("La commande a déjà été envoyée.");
+        }
+
+        var medicament = ligne.getMedicament();
+        medicament.setUnitesCommandees(medicament.getUnitesCommandees() - ligne.getQuantite());
+        medicamentDao.save(medicament);
+
+        commande.getLignes().remove(ligne);
+        ligneDao.delete(ligne);
     }
 
     /**
@@ -139,8 +176,19 @@ public class CommandeService {
      */
     @Transactional
     public Commande enregistreExpedition(int commandeNum) {
-        // TODO : implémenter la méthode
-        throw new UnsupportedOperationException("Not implemented yet");
+        var commande = commandeDao.findById(commandeNum).orElseThrow();
+        if (commande.getEnvoyeele() != null) {
+            throw new IllegalStateException("La commande a déjà été envoyée.");
+        }
+        commande.setEnvoyeele(java.time.LocalDate.now());
+        for (var ligne : commande.getLignes()) {
+            var medicament = ligne.getMedicament();
+            medicament.setUnitesEnStock(medicament.getUnitesEnStock() - ligne.getQuantite());
+            medicament.setUnitesCommandees(medicament.getUnitesCommandees() - ligne.getQuantite());
+            medicamentDao.save(medicament);
+        }
+        commandeDao.save(commande);
+        return commande;
     }
 
     /**
@@ -159,4 +207,6 @@ public class CommandeService {
     public List<Commande> getCommandeEnCoursPour(String dispensaireCode) {
         return commandeDao.commandesEnCoursPour(dispensaireCode);
     }
+    
+
 }

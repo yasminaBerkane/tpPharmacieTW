@@ -2,8 +2,6 @@ package pharmacie.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import jakarta.validation.constraints.Size;
-
-
 import lombok.Data;
 
 @Embeddable // Ne donne pas lieu à une table relationnelle séparée
